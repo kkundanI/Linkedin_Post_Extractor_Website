@@ -201,8 +201,9 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
     // Search comprehensively for ALL LinkedIn media URLs
     const scriptContent = $('script').text();
     
-    // Enhanced patterns to capture more media content
+    // Comprehensive patterns for LinkedIn multi-image posts and carousels
     const mediaPatterns = [
+      // Standard image patterns
       /"imageUrl":"([^"]+)"/g,
       /"url":"([^"]*(?:media|image|photo|dms)[^"]*)"/g,
       /"src":"([^"]*(?:media|image|photo|dms)[^"]*)"/g,
@@ -210,9 +211,27 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
       /"vectorImage":"([^"]+)"/g,
       /"displayImageUrl":"([^"]+)"/g,
       /"backgroundImage":"([^"]+)"/g,
-      /https:\/\/media\.licdn\.com[^"'\s]+/g,
-      /https:\/\/dms\.licdn\.com[^"'\s]+/g,
-      /https:\/\/media-exp\d*\.licdn\.com[^"'\s]+/g
+      
+      // Multi-image and carousel specific patterns
+      /"images":\s*\[([^\]]+)\]/g,
+      /"media":\s*\[([^\]]+)\]/g,
+      /"content":\s*\[([^\]]+)\]/g,
+      /"displayImages":\s*\[([^\]]+)\]/g,
+      /"carouselMedia":\s*\[([^\]]+)\]/g,
+      
+      // Direct LinkedIn CDN URLs
+      /https:\/\/media\.licdn\.com\/dms\/image\/[^"'\s,}]+/g,
+      /https:\/\/dms\.licdn\.com\/[^"'\s,}]+/g,
+      /https:\/\/media-exp\d*\.licdn\.com\/[^"'\s,}]+/g,
+      
+      // Feedshare and post-specific patterns
+      /feedshare-shrink_\d+\/[^"'\s,}]+/g,
+      /feedshare-shrink_800[^"'\s,}]*/g,
+      /feedshare-shrink_2048[^"'\s,}]*/g,
+      
+      // Image ID patterns for carousel posts
+      /"([^"]*D\d+AQ[^"]*feedshare[^"]*)"/g,
+      /"([^"]*v2\/D\d+AQ[^"]*)"/g
     ];
     
     console.log('Searching for media content in script data...');
@@ -222,8 +241,33 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
       let match;
       while ((match = pattern.exec(scriptContent)) !== null) {
         let url = match[1] || match[0]; // Some patterns capture full URL, others capture group
-        if (url) {
+        
+        // Handle array matches (for patterns that capture image arrays)
+        if (url && url.includes('[') || url.includes(',')) {
+          // Parse arrays of URLs
+          const arrayMatches = url.match(/"([^"]*(?:media|dms|image)[^"]*)"/g);
+          if (arrayMatches) {
+            arrayMatches.forEach(arrayUrl => {
+              const cleanArrayUrl = arrayUrl.replace(/"/g, '').replace(/\\u[\dA-F]{4}/gi, '').replace(/\\\//g, '/');
+              if (cleanArrayUrl.startsWith('http') && !images.some(img => img.url === cleanArrayUrl)) {
+                foundMediaCount++;
+                images.push({
+                  url: cleanArrayUrl,
+                  alt: `LinkedIn post image ${images.length + 1}`,
+                  filename: `post-image-${images.length + 1}.jpg`
+                });
+                console.log(`Found array media ${foundMediaCount}:`, cleanArrayUrl.substring(0, 80) + '...');
+              }
+            });
+          }
+        } else if (url) {
+          // Handle single URLs
           url = url.replace(/\\u[\dA-F]{4}/gi, '').replace(/\\\//g, '/').replace(/\\"/g, '"');
+          
+          // Make sure it's a complete URL
+          if (!url.startsWith('http') && url.includes('dms/image')) {
+            url = 'https://media.licdn.com/' + url;
+          }
           
           // Enhanced filtering for post content media
           const isPostContentMedia = url && 
@@ -242,6 +286,7 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
              url.includes('media-exp') ||        // LinkedIn media
              url.includes('image') ||            // Image URLs
              url.includes('photo') ||            // Photo URLs
+             url.includes('feedshare') ||        // LinkedIn post sharing
              url.includes('video')) &&           // Video URLs
             !images.some(img => img.url === url) &&  // Avoid duplicates
             url.length > 30; // Filter out tiny URLs
@@ -262,6 +307,48 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
     });
     
     console.log(`Total media items found in scripts: ${foundMediaCount}`);
+    
+    // Additional aggressive search for carousel/multi-image posts
+    console.log('Performing aggressive search for multi-image content...');
+    const allScriptTexts = $('script').map((i, el) => $(el).text()).get();
+    const combinedScript = allScriptTexts.join(' ');
+    
+    // Look for specific LinkedIn image ID patterns that indicate multiple images
+    const imageIdPatterns = [
+      /D\d+AQG[A-Za-z0-9_-]+/g,  // LinkedIn image IDs
+      /D\d+AQF[A-Za-z0-9_-]+/g,  // More LinkedIn image IDs
+      /D\d+AQE[A-Za-z0-9_-]+/g,  // Even more LinkedIn image IDs
+    ];
+    
+    imageIdPatterns.forEach(pattern => {
+      const matches = combinedScript.match(pattern);
+      if (matches) {
+        console.log(`Found ${matches.length} potential image IDs:`, matches.slice(0, 5));
+        matches.forEach((imageId, index) => {
+          // Construct full LinkedIn image URLs from IDs
+          const possibleUrls = [
+            `https://media.licdn.com/dms/image/v2/${imageId}/feedshare-shrink_800/0/`,
+            `https://media.licdn.com/dms/image/v2/${imageId}/feedshare-shrink_2048/0/`,
+            `https://media.licdn.com/dms/image/${imageId}/feedshare-shrink_800/0/`,
+            `https://media.licdn.com/dms/image/${imageId}/feedshare-shrink_2048/0/`
+          ];
+          
+          possibleUrls.forEach(url => {
+            if (!images.some(img => img.url.includes(imageId))) {
+              foundMediaCount++;
+              images.push({
+                url: url,
+                alt: `LinkedIn carousel image ${images.length + 1}`,
+                filename: `carousel-image-${images.length + 1}.jpg`
+              });
+              console.log(`Constructed image URL ${foundMediaCount}:`, url);
+            }
+          });
+        });
+      }
+    });
+    
+    console.log(`Final total media items found: ${images.length}`);
 
     // Deep search in JSON-LD and other structured data
     $('script[type="application/ld+json"], script:contains("media"), script:contains("image")').each((index, element) => {
