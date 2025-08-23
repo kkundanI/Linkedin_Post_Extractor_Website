@@ -56,15 +56,49 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
                    'No text content found in this LinkedIn post.';
     }
 
-    // Extract images
+    // Extract images - focus on post content images only
     const images: Array<{url: string, alt: string, filename: string}> = [];
-    $('img').each((index, element) => {
-      const src = $(element).attr('src');
-      if (src && src.startsWith('http') && !src.includes('data:')) {
-        const alt = $(element).attr('alt') || `LinkedIn post image ${index + 1}`;
-        const filename = `linkedin-image-${index + 1}.jpg`;
-        images.push({ url: src, alt, filename });
-      }
+    
+    // Specific selectors for post content images, excluding profile pics and logos
+    const postImageSelectors = [
+      '.feed-shared-image img',                    // Main post images
+      '.feed-shared-article img',                  // Article images  
+      '.media-entity img',                         // Media entities
+      '.image-attachment img',                     // Image attachments
+      '[data-view-name="feed-shared-image"] img',  // Feed shared images
+      '.shared-image img'                          // Shared images
+    ];
+    
+    postImageSelectors.forEach(selector => {
+      $(selector).each((index, element) => {
+        const src = $(element).attr('src');
+        const alt = $(element).attr('alt') || '';
+        
+        // Filter out profile pictures, logos, and UI elements
+        const isContentImage = src && 
+          src.startsWith('http') && 
+          !src.includes('data:') &&
+          !src.includes('profile-displayphoto') &&        // Profile pictures
+          !src.includes('logo') &&                        // Company logos
+          !src.includes('avatar') &&                      // Avatar images
+          !src.includes('emoji') &&                       // Emoji images
+          !src.includes('icon') &&                        // Icon images
+          !alt.toLowerCase().includes('profile') &&       // Profile related
+          !alt.toLowerCase().includes('logo') &&          // Logo related
+          !alt.toLowerCase().includes('avatar') &&        // Avatar related
+          src.includes('media') ||                        // Media URLs are usually content
+          src.includes('image') ||                        // Image URLs
+          src.includes('photo');                          // Photo URLs
+        
+        if (isContentImage) {
+          const filename = `post-image-${images.length + 1}.jpg`;
+          images.push({ 
+            url: src, 
+            alt: alt || `LinkedIn post content image ${images.length + 1}`, 
+            filename 
+          });
+        }
+      });
     });
 
     // Extract videos (limited with simple fetch)
@@ -174,13 +208,17 @@ async function extractLinkedInPost(url: string): Promise<ExtractedContent> {
         }
       }
 
-      // Extract images
+      // Extract images - focus on post content images only
       const images: Array<{url: string, alt: string, filename: string}> = [];
       const imgSelectors = [
-        'article img',
-        '[data-view-name="feed-shared-image"] img',
-        '.feed-shared-image img',
-        '.media-outlet-card__image img'
+        '.feed-shared-image img',                    // Main post images
+        '.feed-shared-article img',                  // Article images
+        '.media-entity img',                         // Media entities
+        '.image-attachment img',                     // Image attachments
+        '[data-view-name="feed-shared-image"] img',  // Feed shared images
+        '.shared-image img',                         // Shared images
+        '.media-outlet-card__image img',             // Media outlet images
+        'article .shared-image img'                  // Article shared images
       ];
       
       const imageElements = new Set<HTMLImageElement>();
@@ -196,9 +234,26 @@ async function extractLinkedInPost(url: string): Promise<ExtractedContent> {
 
       let imageIndex = 0;
       imageElements.forEach((img) => {
-        if (img.src && img.src.startsWith('http') && !img.src.includes('data:')) {
-          const alt = img.alt || `LinkedIn post image ${imageIndex + 1}`;
-          const filename = `linkedin-image-${imageIndex + 1}.jpg`;
+        // Filter out profile pictures, logos, and UI elements
+        const isContentImage = img.src && 
+          img.src.startsWith('http') && 
+          !img.src.includes('data:') &&
+          !img.src.includes('profile-displayphoto') &&        // Profile pictures
+          !img.src.includes('logo') &&                        // Company logos
+          !img.src.includes('avatar') &&                      // Avatar images
+          !img.src.includes('emoji') &&                       // Emoji images
+          !img.src.includes('icon') &&                        // Icon images
+          !img.alt?.toLowerCase().includes('profile') &&      // Profile related
+          !img.alt?.toLowerCase().includes('logo') &&         // Logo related
+          !img.alt?.toLowerCase().includes('avatar') &&       // Avatar related
+          (img.src.includes('media') ||                       // Media URLs are usually content
+           img.src.includes('image') ||                       // Image URLs
+           img.src.includes('photo') ||                       // Photo URLs
+           img.src.includes('dms/image'));                     // LinkedIn media service images
+        
+        if (isContentImage) {
+          const alt = img.alt || `LinkedIn post content image ${imageIndex + 1}`;
+          const filename = `post-image-${imageIndex + 1}.jpg`;
           images.push({ url: img.src, alt, filename });
           imageIndex++;
         }
