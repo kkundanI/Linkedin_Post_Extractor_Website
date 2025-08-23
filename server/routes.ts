@@ -6,6 +6,105 @@ import * as cheerio from "cheerio";
 import puppeteer from "puppeteer";
 import UserAgent from "user-agents";
 
+// Simple fetch-based extraction as fallback
+async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> {
+  try {
+    const userAgent = new UserAgent();
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': userAgent.toString(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    // Extract text content
+    let textContent = '';
+    
+    // Try different selectors for LinkedIn post text
+    const textSelectors = [
+      '.feed-shared-text',
+      '.attributed-text-segment-list__content',
+      '[data-view-name="feed-shared-text"]',
+      '.break-words',
+      'article .break-words'
+    ];
+
+    for (const selector of textSelectors) {
+      const element = $(selector);
+      if (element.length && element.text().trim()) {
+        textContent = element.text().trim();
+        break;
+      }
+    }
+
+    // If no specific text found, try to extract from meta description or title
+    if (!textContent) {
+      textContent = $('meta[property="og:description"]').attr('content') || 
+                   $('meta[name="description"]').attr('content') || 
+                   $('title').text() || 
+                   'No text content found in this LinkedIn post.';
+    }
+
+    // Extract images
+    const images: Array<{url: string, alt: string, filename: string}> = [];
+    $('img').each((index, element) => {
+      const src = $(element).attr('src');
+      if (src && src.startsWith('http') && !src.includes('data:')) {
+        const alt = $(element).attr('alt') || `LinkedIn post image ${index + 1}`;
+        const filename = `linkedin-image-${index + 1}.jpg`;
+        images.push({ url: src, alt, filename });
+      }
+    });
+
+    // Extract videos (limited with simple fetch)
+    const videos: Array<{url: string, title: string, duration: string, filename: string}> = [];
+    $('video').each((index, element) => {
+      const src = $(element).attr('src');
+      if (src && src.startsWith('http')) {
+        const title = `LinkedIn post video ${index + 1}`;
+        const duration = 'Unknown';
+        const filename = `linkedin-video-${index + 1}.mp4`;
+        videos.push({ url: src, title, duration, filename });
+      }
+    });
+
+    // Extract documents
+    const documents: Array<{url: string, title: string, type: string, size: string, filename: string}> = [];
+    $('a[href*=".pdf"], a[href*=".doc"], a[href*=".ppt"]').each((index, element) => {
+      const href = $(element).attr('href');
+      if (href) {
+        const title = $(element).text().trim() || `Document ${index + 1}`;
+        const type = 'Document';
+        const size = 'Unknown';
+        const filename = title.toLowerCase().replace(/\s+/g, '-') + '.pdf';
+        documents.push({ url: href, title, type, size, filename });
+      }
+    });
+
+    return {
+      text: textContent,
+      images: images.slice(0, 10), // Limit to first 10 images
+      videos,
+      documents
+    };
+
+  } catch (error) {
+    console.error('Simple extraction error:', error);
+    throw new Error(`Failed to extract content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 // LinkedIn post extraction function
 async function extractLinkedInPost(url: string): Promise<ExtractedContent> {
   let browser;
@@ -86,18 +185,22 @@ async function extractLinkedInPost(url: string): Promise<ExtractedContent> {
       
       const imageElements = new Set<HTMLImageElement>();
       for (const selector of imgSelectors) {
-        document.querySelectorAll(selector).forEach(img => {
+        const nodeList = document.querySelectorAll(selector);
+        for (let i = 0; i < nodeList.length; i++) {
+          const img = nodeList[i];
           if (img instanceof HTMLImageElement) {
             imageElements.add(img);
           }
-        });
+        }
       }
 
-      imageElements.forEach((img, index) => {
+      let imageIndex = 0;
+      imageElements.forEach((img) => {
         if (img.src && img.src.startsWith('http') && !img.src.includes('data:')) {
-          const alt = img.alt || `LinkedIn post image ${index + 1}`;
-          const filename = `linkedin-image-${index + 1}.jpg`;
+          const alt = img.alt || `LinkedIn post image ${imageIndex + 1}`;
+          const filename = `linkedin-image-${imageIndex + 1}.jpg`;
           images.push({ url: img.src, alt, filename });
+          imageIndex++;
         }
       });
 
@@ -105,14 +208,15 @@ async function extractLinkedInPost(url: string): Promise<ExtractedContent> {
       const videos: Array<{url: string, title: string, duration: string, filename: string}> = [];
       const videoElements = document.querySelectorAll('video, [data-view-name*="video"]');
       
-      videoElements.forEach((video, index) => {
+      for (let i = 0; i < videoElements.length; i++) {
+        const video = videoElements[i];
         if (video instanceof HTMLVideoElement && video.src) {
-          const title = `LinkedIn post video ${index + 1}`;
+          const title = `LinkedIn post video ${i + 1}`;
           const duration = video.duration ? `${Math.floor(video.duration / 60)}:${Math.floor(video.duration % 60).toString().padStart(2, '0')}` : 'Unknown';
-          const filename = `linkedin-video-${index + 1}.mp4`;
+          const filename = `linkedin-video-${i + 1}.mp4`;
           videos.push({ url: video.src, title, duration, filename });
         }
-      });
+      }
 
       // Extract documents/attachments
       const documents: Array<{url: string, title: string, type: string, size: string, filename: string}> = [];
@@ -128,16 +232,20 @@ async function extractLinkedInPost(url: string): Promise<ExtractedContent> {
         '.document-attachment'
       ];
 
+      let docIndex = 0;
       for (const selector of docSelectors) {
-        document.querySelectorAll(selector).forEach((link, index) => {
+        const docElements = document.querySelectorAll(selector);
+        for (let i = 0; i < docElements.length; i++) {
+          const link = docElements[i];
           if (link instanceof HTMLAnchorElement && link.href) {
-            const title = link.textContent?.trim() || `Document ${index + 1}`;
+            const title = link.textContent?.trim() || `Document ${docIndex + 1}`;
             const type = 'Document';
             const size = 'Unknown';
             const filename = title.toLowerCase().replace(/\s+/g, '-') + '.pdf';
             documents.push({ url: link.href, title, type, size, filename });
+            docIndex++;
           }
-        });
+        }
       }
 
       return { textContent, images, videos, documents };
@@ -229,15 +337,23 @@ Thank you to everyone who supported this journey. Looking forward to the amazing
         return res.json(demoContent);
       }
 
-      // For real LinkedIn extraction, use the extraction function
+      // For real LinkedIn extraction, try Puppeteer first, then fallback to simple extraction
       try {
+        console.log('Attempting Puppeteer extraction...');
         const extractedContent = await extractLinkedInPost(url);
         return res.json(extractedContent);
-      } catch (extractionError) {
-        console.error('Real extraction failed:', extractionError);
-        return res.status(500).json({
-          error: `Failed to extract content from LinkedIn post: ${extractionError instanceof Error ? extractionError.message : 'Unknown error'}`
-        });
+      } catch (puppeteerError) {
+        console.log('Puppeteer extraction failed, trying simple extraction:', puppeteerError instanceof Error ? puppeteerError.message : 'Unknown error');
+        
+        try {
+          const extractedContent = await simpleLinkedInExtraction(url);
+          return res.json(extractedContent);
+        } catch (simpleError) {
+          console.error('Both extraction methods failed:', simpleError);
+          return res.status(500).json({
+            error: `Failed to extract content from LinkedIn post. Please make sure the URL is valid and publicly accessible.`
+          });
+        }
       }
 
     } catch (error) {
