@@ -195,49 +195,90 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
                    'No text content found in this LinkedIn post.';
     }
 
-    // Extract images - focus on post content images only
+    // Extract images from meta tags and content
     const images: Array<{url: string, alt: string, filename: string}> = [];
     
-    // Specific selectors for post content images, excluding profile pics and logos
-    const postImageSelectors = [
-      '.feed-shared-image img',                    // Main post images
-      '.feed-shared-article img',                  // Article images  
-      '.media-entity img',                         // Media entities
-      '.image-attachment img',                     // Image attachments
-      '[data-view-name="feed-shared-image"] img',  // Feed shared images
-      '.shared-image img'                          // Shared images
-    ];
-    
-    postImageSelectors.forEach(selector => {
-      $(selector).each((index, element) => {
-        const src = $(element).attr('src');
-        const alt = $(element).attr('alt') || '';
-        
-        // Filter out profile pictures, logos, and UI elements
-        const isContentImage = src && 
-          src.startsWith('http') && 
-          !src.includes('data:') &&
-          !src.includes('profile-displayphoto') &&        // Profile pictures
-          !src.includes('logo') &&                        // Company logos
-          !src.includes('avatar') &&                      // Avatar images
-          !src.includes('emoji') &&                       // Emoji images
-          !src.includes('icon') &&                        // Icon images
-          !alt.toLowerCase().includes('profile') &&       // Profile related
-          !alt.toLowerCase().includes('logo') &&          // Logo related
-          !alt.toLowerCase().includes('avatar') &&        // Avatar related
-          src.includes('media') ||                        // Media URLs are usually content
-          src.includes('image') ||                        // Image URLs
-          src.includes('photo');                          // Photo URLs
-        
-        if (isContentImage) {
-          const filename = `post-image-${images.length + 1}.jpg`;
-          images.push({ 
-            url: src, 
-            alt: alt || `LinkedIn post content image ${images.length + 1}`, 
-            filename 
+    // First try Open Graph images (often contains main post image)
+    const ogImage = $('meta[property="og:image"]').attr('content');
+    if (ogImage && ogImage.startsWith('http')) {
+      images.push({
+        url: ogImage,
+        alt: 'LinkedIn post main image',
+        filename: 'post-main-image.jpg'
+      });
+    }
+
+    // Try Twitter card images as fallback
+    const twitterImage = $('meta[name="twitter:image"]').attr('content');
+    if (twitterImage && twitterImage.startsWith('http') && twitterImage !== ogImage) {
+      images.push({
+        url: twitterImage,
+        alt: 'LinkedIn post image',
+        filename: 'post-image-2.jpg'
+      });
+    }
+
+    // Look for LinkedIn specific image patterns in script tags or data attributes
+    const scriptContent = $('script').text();
+    const imageUrlMatches = scriptContent.match(/"imageUrl":"([^"]+)"/g);
+    if (imageUrlMatches) {
+      imageUrlMatches.forEach((match, index) => {
+        const url = match.match(/"imageUrl":"([^"]+)"/)?.[1];
+        if (url && url.startsWith('http') && !images.some(img => img.url === url)) {
+          images.push({
+            url: url.replace(/\\u[\dA-F]{4}/gi, ''), // Clean escaped unicode
+            alt: `LinkedIn post content image ${index + 1}`,
+            filename: `post-content-${index + 1}.jpg`
           });
         }
       });
+    }
+
+    // Look for media URLs in JSON-LD data
+    $('script[type="application/ld+json"]').each((index, element) => {
+      try {
+        const jsonData = JSON.parse($(element).text());
+        if (jsonData.image) {
+          const imageUrl = Array.isArray(jsonData.image) ? jsonData.image[0] : jsonData.image;
+          if (typeof imageUrl === 'string' && imageUrl.startsWith('http') && !images.some(img => img.url === imageUrl)) {
+            images.push({
+              url: imageUrl,
+              alt: 'LinkedIn post structured data image',
+              filename: `structured-image-${index + 1}.jpg`
+            });
+          }
+        }
+      } catch (e) {
+        // Ignore JSON parsing errors
+      }
+    });
+
+    // Extract from img elements as fallback (but filter carefully)
+    $('img').each((index, element) => {
+      const src = $(element).attr('src');
+      const alt = $(element).attr('alt') || '';
+      
+      // More specific filtering for LinkedIn content images
+      const isContentImage = src && 
+        src.startsWith('http') && 
+        !src.includes('data:') &&
+        !src.includes('profile-displayphoto') &&
+        !src.includes('logo') &&
+        !src.includes('avatar') &&
+        !src.includes('emoji') &&
+        !src.includes('/p/') &&  // Profile paths
+        (src.includes('dms-image') ||  // LinkedIn media service
+         src.includes('media-exp') ||  // LinkedIn media
+         src.includes('media.licdn.com')) &&  // LinkedIn CDN
+        !images.some(img => img.url === src);  // Avoid duplicates
+      
+      if (isContentImage && images.length < 5) {  // Limit to 5 images total
+        images.push({ 
+          url: src, 
+          alt: alt || `LinkedIn post image ${images.length + 1}`, 
+          filename: `linkedin-media-${images.length + 1}.jpg`
+        });
+      }
     });
 
     // Extract videos (limited with simple fetch)
