@@ -24,7 +24,7 @@ export function ExtractionForm({ onExtracted, onLoading }: ExtractionFormProps) 
   const form = useForm<ExtractRequest>({
     resolver: zodResolver(extractRequestSchema),
     defaultValues: {
-      url: "https://www.linkedin.com/posts/johndoe_innovation-technology-future-activity-123456789",
+      url: "",
       demoMode: false
     }
   });
@@ -101,7 +101,7 @@ export function ExtractionForm({ onExtracted, onLoading }: ExtractionFormProps) 
                       <Input
                         {...field}
                         type="url"
-                        placeholder="https://www.linkedin.com/posts/..."
+                        placeholder="Enter LinkedIn post URL here..."
                         className="pr-10"
                         data-testid="input-linkedin-url"
                       />

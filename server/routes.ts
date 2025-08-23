@@ -562,6 +562,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/linkedin/extract", async (req, res) => {
     try {
       const { url, demoMode } = extractRequestSchema.parse(req.body);
+      
+      // Clean and validate the URL
+      const cleanUrl = url.trim();
+      if (!cleanUrl) {
+        return res.status(400).json({
+          error: "Please provide a LinkedIn post URL"
+        });
+      }
+      
+      console.log('Processing URL:', cleanUrl);
 
       // If demo mode is enabled, return sample data
       if (demoMode) {
@@ -626,19 +636,19 @@ Thank you to everyone who supported this journey. Looking forward to the amazing
       // For real LinkedIn extraction, try cloud browser first, then fallback methods
       try {
         // Try Browserless.io first (best for media extraction)
-        const extractedContent = await browserlessLinkedInExtraction(url);
+        const extractedContent = await browserlessLinkedInExtraction(cleanUrl);
         return res.json(extractedContent);
       } catch (browserlessError) {
         console.log('Browserless extraction failed, trying simple extraction:', browserlessError instanceof Error ? browserlessError.message : 'Unknown error');
         
         try {
           // Fallback to simple HTML extraction (text only, limited media)
-          const extractedContent = await simpleLinkedInExtraction(url);
+          const extractedContent = await simpleLinkedInExtraction(cleanUrl);
           return res.json(extractedContent);
         } catch (simpleError) {
           console.error('All extraction methods failed:', simpleError);
           return res.status(500).json({
-            error: `Failed to extract content from LinkedIn post. Please make sure the URL is valid and publicly accessible. For media extraction, a Browserless API key is required.`
+            error: `Failed to extract content from LinkedIn post. Please make sure the URL is valid and publicly accessible.`
           });
         }
       }
