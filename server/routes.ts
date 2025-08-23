@@ -198,84 +198,128 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
     // Extract ALL images from post content (not profile/slideshow images)
     const images: Array<{url: string, alt: string, filename: string}> = [];
     
-    // Search for all LinkedIn media URLs in script content and JSON data
+    // Search comprehensively for ALL LinkedIn media URLs
     const scriptContent = $('script').text();
     
-    // Pattern 1: Look for media URLs in various script formats
+    // Enhanced patterns to capture more media content
     const mediaPatterns = [
       /"imageUrl":"([^"]+)"/g,
-      /"url":"([^"]*(?:media|image|photo)[^"]*)"/g,
-      /"src":"([^"]*(?:media|image|photo)[^"]*)"/g,
-      /"image":"([^"]+)"/g
+      /"url":"([^"]*(?:media|image|photo|dms)[^"]*)"/g,
+      /"src":"([^"]*(?:media|image|photo|dms)[^"]*)"/g,
+      /"image":"([^"]+)"/g,
+      /"vectorImage":"([^"]+)"/g,
+      /"displayImageUrl":"([^"]+)"/g,
+      /"backgroundImage":"([^"]+)"/g,
+      /https:\/\/media\.licdn\.com[^"'\s]+/g,
+      /https:\/\/dms\.licdn\.com[^"'\s]+/g,
+      /https:\/\/media-exp\d*\.licdn\.com[^"'\s]+/g
     ];
     
-    mediaPatterns.forEach(pattern => {
-      const matches = scriptContent.match(pattern);
-      if (matches) {
-        matches.forEach((match, index) => {
-          const urlMatch = match.match(pattern);
-          if (urlMatch && urlMatch[1]) {
-            let url = urlMatch[1].replace(/\\u[\dA-F]{4}/gi, '').replace(/\\\//g, '/');
-            
-            // Filter to only post content images (not profile/account images)
-            const isPostContentImage = url && 
-              url.startsWith('http') &&
-              !url.includes('profile-displayphoto') &&
-              !url.includes('profile-photo') &&
-              !url.includes('company-logo') &&
-              !url.includes('background-image') &&
-              !url.includes('slideshow') &&
-              !url.includes('/p/') &&  // Profile image paths
-              !url.includes('headshot') &&
-              (url.includes('dms-image') ||    // LinkedIn media service
-               url.includes('media-exp') ||    // LinkedIn media
-               url.includes('media.licdn.com') ||  // LinkedIn CDN
-               url.includes('image') ||        // General image URLs
-               url.includes('photo')) &&       // Photo URLs
-              !images.some(img => img.url === url);  // Avoid duplicates
-            
-            if (isPostContentImage) {
-              images.push({
-                url: url,
-                alt: `LinkedIn post content image ${images.length + 1}`,
-                filename: `post-image-${images.length + 1}.jpg`
+    console.log('Searching for media content in script data...');
+    let foundMediaCount = 0;
+    
+    mediaPatterns.forEach((pattern, patternIndex) => {
+      let match;
+      while ((match = pattern.exec(scriptContent)) !== null) {
+        let url = match[1] || match[0]; // Some patterns capture full URL, others capture group
+        if (url) {
+          url = url.replace(/\\u[\dA-F]{4}/gi, '').replace(/\\\//g, '/').replace(/\\"/g, '"');
+          
+          // Enhanced filtering for post content media
+          const isPostContentMedia = url && 
+            url.startsWith('http') &&
+            !url.includes('profile-displayphoto') &&
+            !url.includes('profile-photo') &&
+            !url.includes('company-logo') &&
+            !url.includes('logo') &&
+            !url.includes('icon') &&
+            !url.includes('emoji') &&
+            !url.includes('/in/') &&  // Profile paths
+            !url.includes('headshot') &&
+            !url.includes('avatar') &&
+            (url.includes('dms') ||              // LinkedIn DMS media
+             url.includes('media.licdn.com') ||  // LinkedIn CDN
+             url.includes('media-exp') ||        // LinkedIn media
+             url.includes('image') ||            // Image URLs
+             url.includes('photo') ||            // Photo URLs
+             url.includes('video')) &&           // Video URLs
+            !images.some(img => img.url === url) &&  // Avoid duplicates
+            url.length > 30; // Filter out tiny URLs
+          
+          if (isPostContentMedia) {
+            foundMediaCount++;
+            images.push({
+              url: url,
+              alt: `LinkedIn post media ${images.length + 1}`,
+              filename: `post-media-${images.length + 1}.jpg`
+            });
+            console.log(`Found media ${foundMediaCount}:`, url.substring(0, 80) + '...');
+          }
+        }
+      }
+      // Reset regex lastIndex for global patterns
+      pattern.lastIndex = 0;
+    });
+    
+    console.log(`Total media items found in scripts: ${foundMediaCount}`);
+
+    // Deep search in JSON-LD and other structured data
+    $('script[type="application/ld+json"], script:contains("media"), script:contains("image")').each((index, element) => {
+      try {
+        const content = $(element).text();
+        
+        // Try to parse as JSON first
+        if ($(element).attr('type') === 'application/ld+json') {
+          const jsonData = JSON.parse(content);
+          const extractFromStructuredData = (obj: any, path: string = '') => {
+            if (typeof obj === 'object' && obj !== null) {
+              Object.keys(obj).forEach(key => {
+                const currentPath = path ? `${path}.${key}` : key;
+                if ((key.toLowerCase().includes('image') || key.toLowerCase().includes('media') || key.toLowerCase().includes('url')) && typeof obj[key] === 'string') {
+                  const mediaUrl = obj[key];
+                  if (mediaUrl.startsWith('http') && 
+                      (mediaUrl.includes('media') || mediaUrl.includes('image') || mediaUrl.includes('photo')) &&
+                      !mediaUrl.includes('profile') && 
+                      !mediaUrl.includes('avatar') &&
+                      !mediaUrl.includes('logo') &&
+                      !images.some(img => img.url === mediaUrl)) {
+                    images.push({
+                      url: mediaUrl,
+                      alt: `LinkedIn structured data media`,
+                      filename: `structured-${images.length + 1}.jpg`
+                    });
+                    console.log('Found structured data media:', mediaUrl.substring(0, 60) + '...');
+                  }
+                } else if (Array.isArray(obj[key])) {
+                  obj[key].forEach((item: any, idx: number) => extractFromStructuredData(item, `${currentPath}[${idx}]`));
+                } else if (typeof obj[key] === 'object') {
+                  extractFromStructuredData(obj[key], currentPath);
+                }
               });
             }
-          }
-        });
-      }
-    });
-
-    // Look for images in JSON-LD structured data
-    $('script[type="application/ld+json"]').each((index, element) => {
-      try {
-        const jsonData = JSON.parse($(element).text());
-        const extractImagesFromJson = (obj: any) => {
-          if (typeof obj === 'object' && obj !== null) {
-            Object.keys(obj).forEach(key => {
-              if (key.toLowerCase().includes('image') && typeof obj[key] === 'string') {
-                const imageUrl = obj[key];
-                if (imageUrl.startsWith('http') && 
-                    !imageUrl.includes('profile') && 
-                    !imageUrl.includes('slideshow') &&
-                    !images.some(img => img.url === imageUrl)) {
-                  images.push({
-                    url: imageUrl,
-                    alt: 'LinkedIn post media',
-                    filename: `structured-media-${images.length + 1}.jpg`
-                  });
-                }
-              } else if (Array.isArray(obj[key])) {
-                obj[key].forEach((item: any) => extractImagesFromJson(item));
-              } else if (typeof obj[key] === 'object') {
-                extractImagesFromJson(obj[key]);
+          };
+          extractFromStructuredData(jsonData);
+        } else {
+          // Search for URLs in non-JSON script content
+          const urlMatches = content.match(/https:\/\/[^"'\s,}]+(?:media|image|photo|dms)[^"'\s,}]*/g);
+          if (urlMatches) {
+            urlMatches.forEach(url => {
+              if (!url.includes('profile') && 
+                  !url.includes('avatar') && 
+                  !url.includes('logo') &&
+                  !images.some(img => img.url === url)) {
+                images.push({
+                  url: url,
+                  alt: `LinkedIn script media`,
+                  filename: `script-media-${images.length + 1}.jpg`
+                });
+                console.log('Found script media:', url.substring(0, 60) + '...');
               }
             });
           }
-        };
-        extractImagesFromJson(jsonData);
+        }
       } catch (e) {
-        // Ignore JSON parsing errors
+        // Continue if parsing fails
       }
     });
 
@@ -332,17 +376,48 @@ async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> 
       }
     });
 
-    // Extract videos (limited with simple fetch)
+    // Enhanced video extraction
     const videos: Array<{url: string, title: string, duration: string, filename: string}> = [];
+    
+    // Look for video elements
     $('video').each((index, element) => {
-      const src = $(element).attr('src');
+      const src = $(element).attr('src') || $(element).find('source').first().attr('src');
       if (src && src.startsWith('http')) {
-        const title = `LinkedIn post video ${index + 1}`;
-        const duration = 'Unknown';
-        const filename = `linkedin-video-${index + 1}.mp4`;
-        videos.push({ url: src, title, duration, filename });
+        videos.push({
+          url: src,
+          title: `LinkedIn post video ${videos.length + 1}`,
+          duration: 'Unknown',
+          filename: `post-video-${videos.length + 1}.mp4`
+        });
       }
     });
+    
+    // Search for video URLs in script content
+    const videoPatterns = [
+      /"videoUrl":"([^"]+)"/g,
+      /"url":"([^"]*video[^"]*)"/g,
+      /https:\/\/[^"'\s]+\.mp4[^"'\s]*/g,
+      /https:\/\/[^"'\s]+video[^"'\s]*/g
+    ];
+    
+    videoPatterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(scriptContent)) !== null) {
+        let videoUrl = match[1] || match[0];
+        if (videoUrl && videoUrl.startsWith('http') && !videos.some(v => v.url === videoUrl)) {
+          videos.push({
+            url: videoUrl,
+            title: `LinkedIn post video ${videos.length + 1}`,
+            duration: 'Unknown', 
+            filename: `script-video-${videos.length + 1}.mp4`
+          });
+          console.log('Found video:', videoUrl.substring(0, 60) + '...');
+        }
+      }
+      pattern.lastIndex = 0;
+    });
+    
+    console.log(`Total videos found: ${videos.length}`);
 
     // Extract documents
     const documents: Array<{url: string, title: string, type: string, size: string, filename: string}> = [];
