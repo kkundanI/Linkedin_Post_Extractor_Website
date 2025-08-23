@@ -5,6 +5,145 @@ import { extractRequestSchema, type ExtractedContent } from "@shared/schema";
 import * as cheerio from "cheerio";
 import puppeteer from "puppeteer";
 import UserAgent from "user-agents";
+import axios from "axios";
+
+// Cloud-based browser extraction using Browserless.io
+async function browserlessLinkedInExtraction(url: string): Promise<ExtractedContent> {
+  try {
+    const browserlessKey = process.env.BROWSERLESS_API_KEY;
+    
+    if (!browserlessKey) {
+      throw new Error('Browserless API key not configured');
+    }
+
+    console.log('Using Browserless.io for media extraction...');
+    
+    // Get fully rendered HTML from Browserless
+    const response = await axios.post(
+      `https://chrome.browserless.io/content?token=${browserlessKey}`,
+      { 
+        url: url,
+        waitForSelector: 'article, [data-id]',
+        waitForTimeout: 5000
+      },
+      {
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const renderedHtml = response.data;
+    const $ = cheerio.load(renderedHtml);
+
+    // Extract text content
+    let textContent = '';
+    const textSelectors = [
+      '[data-view-name="feed-shared-text"] span[dir="ltr"]',
+      '.feed-shared-text span[dir="ltr"]',
+      '.attributed-text-segment-list__content',
+      '.feed-shared-text',
+      '[data-test-id="main-feed-activity-card"] .break-words',
+      'article .break-words'
+    ];
+    
+    for (const selector of textSelectors) {
+      const element = $(selector);
+      if (element.length && element.text().trim()) {
+        textContent = element.text().trim();
+        break;
+      }
+    }
+
+    // If no specific text found, try meta or title
+    if (!textContent) {
+      textContent = $('meta[property="og:description"]').attr('content') || 
+                   $('meta[name="description"]').attr('content') || 
+                   $('title').text() || 
+                   'No text content found in this LinkedIn post.';
+    }
+
+    // Extract images from fully rendered content
+    const images: Array<{url: string, alt: string, filename: string}> = [];
+    const postImageSelectors = [
+      '.feed-shared-image img',
+      '.feed-shared-article img',
+      '.media-entity img',
+      '.image-attachment img',
+      '[data-view-name="feed-shared-image"] img',
+      '.shared-image img',
+      '.media-outlet-card__image img',
+      'article .shared-image img'
+    ];
+    
+    postImageSelectors.forEach(selector => {
+      $(selector).each((index, element) => {
+        const src = $(element).attr('src');
+        const alt = $(element).attr('alt') || '';
+        
+        // Filter out profile pictures, logos, and UI elements
+        const isContentImage = src && 
+          src.startsWith('http') && 
+          !src.includes('data:') &&
+          !src.includes('profile-displayphoto') &&
+          !src.includes('logo') &&
+          !src.includes('avatar') &&
+          !src.includes('emoji') &&
+          !src.includes('icon') &&
+          !alt.toLowerCase().includes('profile') &&
+          !alt.toLowerCase().includes('logo') &&
+          !alt.toLowerCase().includes('avatar') &&
+          (src.includes('media') || src.includes('image') || src.includes('photo') || src.includes('dms/image'));
+        
+        if (isContentImage) {
+          const filename = `post-image-${images.length + 1}.jpg`;
+          images.push({ 
+            url: src, 
+            alt: alt || `LinkedIn post content image ${images.length + 1}`, 
+            filename 
+          });
+        }
+      });
+    });
+
+    // Extract videos from fully rendered content
+    const videos: Array<{url: string, title: string, duration: string, filename: string}> = [];
+    $('video').each((index, element) => {
+      const src = $(element).attr('src') || $(element).find('source').first().attr('src');
+      if (src && src.startsWith('http')) {
+        const title = `LinkedIn post video ${index + 1}`;
+        const duration = 'Unknown';
+        const filename = `post-video-${index + 1}.mp4`;
+        videos.push({ url: src, title, duration, filename });
+      }
+    });
+
+    // Extract documents
+    const documents: Array<{url: string, title: string, type: string, size: string, filename: string}> = [];
+    $('a[href*=".pdf"], a[href*=".doc"], a[href*=".ppt"]').each((index, element) => {
+      const href = $(element).attr('href');
+      if (href) {
+        const title = $(element).text().trim() || `Document ${index + 1}`;
+        const type = 'Document';
+        const size = 'Unknown';
+        const filename = title.toLowerCase().replace(/\s+/g, '-') + '.pdf';
+        documents.push({ url: href, title, type, size, filename });
+      }
+    });
+
+    return {
+      text: textContent,
+      images: images.slice(0, 10), // Limit to first 10 images
+      videos,
+      documents
+    };
+
+  } catch (error) {
+    console.error('Browserless extraction error:', error);
+    throw new Error(`Failed to extract content using cloud browser: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
 
 // Simple fetch-based extraction as fallback
 async function simpleLinkedInExtraction(url: string): Promise<ExtractedContent> {
@@ -392,21 +531,22 @@ Thank you to everyone who supported this journey. Looking forward to the amazing
         return res.json(demoContent);
       }
 
-      // For real LinkedIn extraction, try Puppeteer first, then fallback to simple extraction
+      // For real LinkedIn extraction, try cloud browser first, then fallback methods
       try {
-        console.log('Attempting Puppeteer extraction...');
-        const extractedContent = await extractLinkedInPost(url);
+        // Try Browserless.io first (best for media extraction)
+        const extractedContent = await browserlessLinkedInExtraction(url);
         return res.json(extractedContent);
-      } catch (puppeteerError) {
-        console.log('Puppeteer extraction failed, trying simple extraction:', puppeteerError instanceof Error ? puppeteerError.message : 'Unknown error');
+      } catch (browserlessError) {
+        console.log('Browserless extraction failed, trying simple extraction:', browserlessError instanceof Error ? browserlessError.message : 'Unknown error');
         
         try {
+          // Fallback to simple HTML extraction (text only, limited media)
           const extractedContent = await simpleLinkedInExtraction(url);
           return res.json(extractedContent);
         } catch (simpleError) {
-          console.error('Both extraction methods failed:', simpleError);
+          console.error('All extraction methods failed:', simpleError);
           return res.status(500).json({
-            error: `Failed to extract content from LinkedIn post. Please make sure the URL is valid and publicly accessible.`
+            error: `Failed to extract content from LinkedIn post. Please make sure the URL is valid and publicly accessible. For media extraction, a Browserless API key is required.`
           });
         }
       }

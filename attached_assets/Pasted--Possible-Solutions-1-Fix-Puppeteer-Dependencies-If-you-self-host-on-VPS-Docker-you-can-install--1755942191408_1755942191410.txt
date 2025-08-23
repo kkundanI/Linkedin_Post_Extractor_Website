@@ -1,0 +1,66 @@
+⚡ Possible Solutions
+1. Fix Puppeteer Dependencies
+
+If you self-host on VPS/Docker, you can install missing libraries:
+
+apt-get install -y libglib2.0-0 libnss3 libxss1 libatk1.0-0 libasound2 libgbm1
+
+
+On Replit, this is not possible (restricted OS).
+
+👉 If you can move this project to VPS (DigitalOcean, Render, Railway, etc.), Puppeteer will work and you’ll get all media reliably.
+
+2. Use Headless Browser API (Best for Replit)
+
+Since Replit can’t run Chrome, you can outsource it:
+
+Browserless.io
+
+Playwright API on Microsoft Azure
+
+Apify actors
+
+These services run Chromium in the cloud. You just send them the LinkedIn post URL, and they return the fully rendered DOM, including media URLs.
+
+Code example (Express route with Browserless):
+
+import axios from "axios";
+
+app.get("/api/linkedin/extract", async (req, res) => {
+  const { url } = req.query;
+
+  try {
+    const browserlessKey = process.env.BROWSERLESS_KEY;
+    const response = await axios.post(
+      `https://chrome.browserless.io/content?token=${browserlessKey}`,
+      { url }
+    );
+
+    const html = response.data;
+
+    // extract <img> and <video> sources
+    const imgUrls = [...html.matchAll(/<img[^>]+src="([^"]+)"/g)].map(m => m[1]);
+    const videoUrls = [...html.matchAll(/<video[^>]+src="([^"]+)"/g)].map(m => m[1]);
+
+    res.json({ text: "✅ text already works", images: imgUrls, videos: videoUrls });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+3. Official LinkedIn API (Only for Your Own Posts)
+
+If this is your own content, you can request access to LinkedIn’s official API.
+
+But it won’t work for arbitrary public posts — LinkedIn is very strict.
+
+4. Hybrid Approach
+
+Keep your text extraction from raw HTML (fast, cheap).
+
+Use cloud-rendered browser (Browserless/Apify) only for media extraction when needed.
+
+Bundle results into your ZIP like you’re already doing.
+
+✅ My recommendation for you (since you’re on Replit):
+Go with Headless Browser API (Browserless or Apify) → this avoids installing system libraries and works out-of-the-box with Node.js.
