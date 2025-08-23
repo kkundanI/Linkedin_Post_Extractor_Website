@@ -19,13 +19,13 @@ interface ExtractionFormProps {
 }
 
 export function ExtractionForm({ onExtracted, onLoading }: ExtractionFormProps) {
-  const [demoMode, setDemoMode] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
 
   const form = useForm<ExtractRequest>({
     resolver: zodResolver(extractRequestSchema),
     defaultValues: {
       url: "https://www.linkedin.com/posts/johndoe_innovation-technology-future-activity-123456789",
-      demoMode: true
+      demoMode: false
     }
   });
 
@@ -70,11 +70,18 @@ export function ExtractionForm({ onExtracted, onLoading }: ExtractionFormProps) 
           </div>
         </div>
 
-        {demoMode && (
+        {demoMode ? (
           <Alert className="mb-4 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
             <Info className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             <AlertDescription className="text-amber-800 dark:text-amber-200">
               Demo mode is enabled. Sample data will be used for extraction preview.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert className="mb-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-blue-800 dark:text-blue-200">
+              Real extraction mode is enabled. Content will be extracted directly from the LinkedIn post URL.
             </AlertDescription>
           </Alert>
         )}
