@@ -1,0 +1,516 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkedIn Post Extractor - Extract Content from LinkedIn Posts</title>
+    <meta name="description" content="Extract text, images, videos, and documents from LinkedIn posts and download as ZIP files. Professional content extraction tool.">
+    <meta property="og:title" content="LinkedIn Post Extractor">
+    <meta property="og:description" content="Extract and download content from LinkedIn posts">
+    <meta property="og:type" content="website">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'inter': ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'pulse-subtle': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'spin-slow': 'spin 3s linear infinite',
+                    }
+                }
+            },
+            darkMode: 'class'
+        };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="font-inter bg-gray-50 dark:bg-gray-900 transition-colors duration-300 min-h-screen">
+    <!-- @COMPONENT: Header -->
+    <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <i class="fab fa-linkedin-in text-white text-lg"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900 dark:text-white">LinkedIn Post Extractor</h1>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Extract content from LinkedIn posts</p>
+                    </div>
+                </div>
+                
+                <!-- Dark Mode Toggle -->
+                <button id="darkModeToggle" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                    <i class="fas fa-sun text-gray-600 dark:text-gray-300 dark:hidden"></i>
+                    <i class="fas fa-moon text-gray-300 hidden dark:block"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+    <!-- @END_COMPONENT: Header -->
+
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- @COMPONENT: ExtractionForm -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 mb-8">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Extract LinkedIn Post</h2>
+                
+                <!-- Demo Mode Toggle -->
+                <div class="flex items-center space-x-3">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Demo Mode</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="demoMode" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 dark:peer-focus:ring-amber-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-amber-500"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Demo Mode Notice -->
+            <div id="demoNotice" class="mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-info-circle text-amber-600 dark:text-amber-400 mr-2"></i>
+                    <p class="text-sm text-amber-800 dark:text-amber-200">Demo mode is enabled. Sample data will be used for extraction preview.</p>
+                </div>
+            </div>
+
+            <form class="space-y-4">
+                <div>
+                    <label for="linkedinUrl" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        LinkedIn Post URL
+                    </label>
+                    <div class="relative">
+                        <input 
+                            type="url" 
+                            id="linkedinUrl" 
+                            placeholder="https://www.linkedin.com/posts/..."
+                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition-colors"
+                            data-bind="url"
+                            data-mock="true"
+                            value="https://www.linkedin.com/posts/johndoe_innovation-technology-future-activity-123456789"
+                        >
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+                            <i class="fab fa-linkedin text-gray-400"></i>
+                        </div>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Enter a valid LinkedIn post URL to extract its content</p>
+                </div>
+
+                <button 
+                    type="submit" 
+                    id="extractBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                    data-event="click:handleExtract"
+                >
+                    <i class="fas fa-download"></i>
+                    <span>Extract Content</span>
+                </button>
+            </form>
+        </div>
+        <!-- @END_COMPONENT: ExtractionForm -->
+
+        <!-- @COMPONENT: LoadingState -->
+        <div id="loadingState" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-8 mb-8">
+            <div class="text-center">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full mb-4">
+                    <i class="fas fa-spinner animate-spin text-blue-600 dark:text-blue-400 text-2xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Extracting Content</h3>
+                <p class="text-gray-600 dark:text-gray-400">Please wait while we extract content from the LinkedIn post...</p>
+                <div class="mt-4 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="bg-blue-600 h-2 rounded-full animate-pulse-subtle" style="width: 65%"></div>
+                </div>
+            </div>
+        </div>
+        <!-- @END_COMPONENT: LoadingState -->
+
+        <!-- @COMPONENT: ExtractedContent -->
+        <div id="extractedContent" class="space-y-6">
+            <!-- Text Content -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+                        <i class="fas fa-file-text text-blue-600 mr-2"></i>
+                        Extracted Text
+                    </h3>
+                    <button 
+                        id="copyTextBtn"
+                        class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors flex items-center space-x-2 text-sm"
+                        data-event="click:copyToClipboard"
+                    >
+                        <i class="fas fa-copy"></i>
+                        <span>Copy</span>
+                    </button>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                    <p class="text-gray-800 dark:text-gray-200 leading-relaxed" data-bind="extractedText" data-mock="true">
+                        🚀 Excited to share our latest innovation in AI technology! Our team has been working tirelessly to develop a revolutionary machine learning platform that will transform how businesses approach data analytics. The future of intelligent automation is here, and we're proud to be leading the charge. 
+
+                        Key highlights:
+                        ✅ 40% faster processing speed
+                        ✅ Enhanced accuracy with 99.2% precision
+                        ✅ Seamless integration with existing systems
+                        ✅ Cost-effective solution for enterprises
+
+                        Thank you to everyone who supported this journey. Looking forward to the amazing possibilities ahead! 
+
+                        #Innovation #Technology #AI #MachineLearning #Future #Startup #Tech
+                    </p>
+                </div>
+            </div>
+
+            <!-- Media Content -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+                        <i class="fas fa-images text-green-600 mr-2"></i>
+                        Media Content
+                    </h3>
+                    <div class="flex space-x-2">
+                        <button class="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full">
+                            3 Images
+                        </button>
+                        <button class="px-3 py-1 text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded-full">
+                            1 Video
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Images Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    <!-- @MAP: images.map(image => ( -->
+                    <!-- AI technology dashboard interface showing analytics -->
+                    <div class="relative group cursor-pointer" data-mock="true">
+                        <img 
+                            src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" 
+                            alt="AI technology dashboard interface"
+                            class="w-full h-48 object-cover rounded-lg border border-gray-200 dark:border-gray-600 group-hover:opacity-75 transition-opacity"
+                        >
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-all flex items-center justify-center">
+                            <i class="fas fa-search-plus text-white opacity-0 group-hover:opacity-100 text-xl"></i>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500" checked>
+                        </div>
+                    </div>
+
+                    <!-- Modern office space with computers and technology -->
+                    <div class="relative group cursor-pointer" data-mock="true">
+                        <img 
+                            src="https://images.unsplash.com/photo-1497366216548-37526070297c?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" 
+                            alt="Modern office space with technology"
+                            class="w-full h-48 object-cover rounded-lg border border-gray-200 dark:border-gray-600 group-hover:opacity-75 transition-opacity"
+                        >
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-all flex items-center justify-center">
+                            <i class="fas fa-search-plus text-white opacity-0 group-hover:opacity-100 text-xl"></i>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500" checked>
+                        </div>
+                    </div>
+
+                    <!-- Team collaboration and innovation meeting -->
+                    <div class="relative group cursor-pointer" data-mock="true">
+                        <img 
+                            src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300" 
+                            alt="Team collaboration meeting"
+                            class="w-full h-48 object-cover rounded-lg border border-gray-200 dark:border-gray-600 group-hover:opacity-75 transition-opacity"
+                        >
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 rounded-lg transition-all flex items-center justify-center">
+                            <i class="fas fa-search-plus text-white opacity-0 group-hover:opacity-100 text-xl"></i>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500" checked>
+                        </div>
+                    </div>
+                    <!-- @END_MAP )) -->
+                </div>
+
+                <!-- Videos -->
+                <div class="space-y-4">
+                    <h4 class="font-medium text-gray-900 dark:text-white">Videos</h4>
+                    <div class="relative group cursor-pointer bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden" data-mock="true">
+                        <div class="aspect-video flex items-center justify-center">
+                            <div class="text-center">
+                                <i class="fas fa-play-circle text-4xl text-blue-600 mb-2"></i>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Product Demo Video</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-500">Duration: 2:45</p>
+                            </div>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500" checked>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documents -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+                        <i class="fas fa-file-pdf text-red-600 mr-2"></i>
+                        Documents
+                    </h3>
+                    <button class="px-3 py-1 text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-full">
+                        2 Documents
+                    </button>
+                </div>
+
+                <div class="space-y-3">
+                    <!-- @MAP: documents.map(doc => ( -->
+                    <div class="flex items-center p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700" data-mock="true">
+                        <i class="fas fa-file-pdf text-red-600 text-xl mr-4"></i>
+                        <div class="flex-1">
+                            <h4 class="font-medium text-gray-900 dark:text-white">AI Innovation Whitepaper.pdf</h4>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">2.3 MB • PDF Document</p>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <button class="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500" checked>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700" data-mock="true">
+                        <i class="fas fa-file-powerpoint text-orange-600 text-xl mr-4"></i>
+                        <div class="flex-1">
+                            <h4 class="font-medium text-gray-900 dark:text-white">Product Roadmap 2024.pptx</h4>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">5.7 MB • PowerPoint Presentation</p>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <button class="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <input type="checkbox" class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500" checked>
+                        </div>
+                    </div>
+                    <!-- @END_MAP )) -->
+                </div>
+            </div>
+
+            <!-- Download Actions -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <i class="fas fa-download text-blue-600 mr-2"></i>
+                    Download Options
+                </h3>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button 
+                        class="flex items-center justify-center p-4 border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-colors duration-200 font-semibold"
+                        data-event="click:downloadSelected"
+                    >
+                        <i class="fas fa-check-square mr-2"></i>
+                        Download Selected (6 items)
+                    </button>
+
+                    <button 
+                        class="flex items-center justify-center p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-semibold"
+                        data-event="click:downloadAll"
+                    >
+                        <i class="fas fa-file-archive mr-2"></i>
+                        Download All as ZIP
+                    </button>
+                </div>
+
+                <div class="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <div class="flex items-center">
+                        <i class="fas fa-info-circle text-blue-600 dark:text-blue-400 mr-2"></i>
+                        <p class="text-sm text-blue-800 dark:text-blue-200">
+                            Your ZIP file will include all selected content organized in folders: text.txt, images/, videos/, and documents/
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- @END_COMPONENT: ExtractedContent -->
+    </main>
+
+    <!-- @COMPONENT: Footer -->
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-16">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="text-center">
+                <p class="text-gray-600 dark:text-gray-400 text-sm">
+                    © 2024 LinkedIn Post Extractor. Built with modern web technologies.
+                </p>
+                <div class="mt-2 flex justify-center space-x-4 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700 dark:text-blue-400">Privacy Policy</a>
+                    <a href="#" class="text-blue-600 hover:text-blue-700 dark:text-blue-400">Terms of Service</a>
+                    <a href="#" class="text-blue-600 hover:text-blue-700 dark:text-blue-400">Support</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <!-- @END_COMPONENT: Footer -->
+
+    <!-- @COMPONENT: MediaPreviewModal -->
+    <div id="mediaModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl max-w-4xl max-h-[90vh] overflow-auto">
+            <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Media Preview</h3>
+                <button id="closeModal" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div id="modalContent" class="p-4">
+                <!-- Modal content will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: MediaPreviewModal -->
+
+    <script>
+        (function() {
+            // @STATE: darkMode:boolean, demoMode:boolean, isLoading:boolean, extractedData:object
+
+            // Dark mode functionality
+            const darkModeToggle = document.getElementById('darkModeToggle');
+            const html = document.documentElement;
+            
+            // Check for saved theme preference or default to system preference
+            const currentTheme = localStorage.getItem('theme') || 
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            
+            if (currentTheme === 'dark') {
+                html.classList.add('dark');
+            }
+
+            darkModeToggle.addEventListener('click', function() {
+                html.classList.toggle('dark');
+                const isDark = html.classList.contains('dark');
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            });
+
+            // Demo mode functionality
+            const demoModeToggle = document.getElementById('demoMode');
+            const demoNotice = document.getElementById('demoNotice');
+            
+            demoModeToggle.addEventListener('change', function() {
+                if (this.checked) {
+                    demoNotice.classList.remove('hidden');
+                } else {
+                    demoNotice.classList.add('hidden');
+                }
+            });
+
+            // Extract form functionality
+            const extractForm = document.querySelector('form');
+            const extractBtn = document.getElementById('extractBtn');
+            const loadingState = document.getElementById('loadingState');
+            const extractedContent = document.getElementById('extractedContent');
+
+            extractForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // Show loading state
+                loadingState.classList.remove('hidden');
+                extractedContent.classList.add('hidden');
+                
+                // Simulate API call - TODO: Implement real LinkedIn extraction API
+                setTimeout(() => {
+                    loadingState.classList.add('hidden');
+                    extractedContent.classList.remove('hidden');
+                    
+                    // Scroll to results
+                    extractedContent.scrollIntoView({ behavior: 'smooth' });
+                }, 3000);
+            });
+
+            // Copy to clipboard functionality
+            const copyTextBtn = document.getElementById('copyTextBtn');
+            copyTextBtn.addEventListener('click', function() {
+                const textContent = document.querySelector('[data-bind="extractedText"]').textContent;
+                navigator.clipboard.writeText(textContent).then(() => {
+                    // Show success feedback
+                    const icon = this.querySelector('i');
+                    const text = this.querySelector('span');
+                    const originalIcon = icon.className;
+                    const originalText = text.textContent;
+                    
+                    icon.className = 'fas fa-check';
+                    text.textContent = 'Copied!';
+                    
+                    setTimeout(() => {
+                        icon.className = originalIcon;
+                        text.textContent = originalText;
+                    }, 2000);
+                });
+            });
+
+            // Media preview functionality
+            const mediaModal = document.getElementById('mediaModal');
+            const modalContent = document.getElementById('modalContent');
+            const closeModal = document.getElementById('closeModal');
+            
+            // Add click handlers to images for preview
+            document.querySelectorAll('[data-mock="true"] img').forEach(img => {
+                img.parentElement.addEventListener('click', function(e) {
+                    if (e.target.type !== 'checkbox') {
+                        mediaModal.classList.remove('hidden');
+                        mediaModal.classList.add('flex');
+                        modalContent.innerHTML = `<img src="${img.src}" alt="${img.alt}" class="max-w-full h-auto rounded-lg">`;
+                    }
+                });
+            });
+
+            closeModal.addEventListener('click', function() {
+                mediaModal.classList.add('hidden');
+                mediaModal.classList.remove('flex');
+            });
+
+            // Close modal on backdrop click
+            mediaModal.addEventListener('click', function(e) {
+                if (e.target === mediaModal) {
+                    mediaModal.classList.add('hidden');
+                    mediaModal.classList.remove('flex');
+                }
+            });
+
+            // Download functionality - TODO: Implement real ZIP generation with JSZip
+            document.querySelectorAll('[data-event*="download"]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Show download feedback
+                    const originalText = this.textContent;
+                    this.innerHTML = '<i class="fas fa-spinner animate-spin mr-2"></i>Preparing Download...';
+                    this.disabled = true;
+                    
+                    setTimeout(() => {
+                        this.innerHTML = '<i class="fas fa-check mr-2"></i>Download Ready!';
+                        
+                        setTimeout(() => {
+                            this.innerHTML = originalText;
+                            this.disabled = false;
+                            
+                            // TODO: Trigger actual ZIP download
+                            console.log('Download would start here');
+                        }, 1500);
+                    }, 2000);
+                });
+            });
+
+            // Selection count update
+            function updateSelectionCount() {
+                const checkedBoxes = document.querySelectorAll('input[type="checkbox"]:checked').length - 1; // Subtract demo mode toggle
+                const downloadSelectedBtn = document.querySelector('[data-event="click:downloadSelected"]');
+                if (downloadSelectedBtn) {
+                    downloadSelectedBtn.innerHTML = `<i class="fas fa-check-square mr-2"></i>Download Selected (${checkedBoxes} items)`;
+                }
+            }
+
+            // Add event listeners to checkboxes
+            document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                if (checkbox.id !== 'demoMode') {
+                    checkbox.addEventListener('change', updateSelectionCount);
+                }
+            });
+
+            // Initialize
+            updateSelectionCount();
+        })();
+    </script>
+</body>
+</html>

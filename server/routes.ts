@@ -6,6 +6,7 @@ import * as cheerio from "cheerio";
 import puppeteer from "puppeteer";
 import UserAgent from "user-agents";
 import axios from "axios";
+import JSZip from "jszip";
 
 // Cloud-based browser extraction using Browserless.io
 async function browserlessLinkedInExtraction(url: string): Promise<ExtractedContent> {
@@ -134,7 +135,7 @@ async function browserlessLinkedInExtraction(url: string): Promise<ExtractedCont
 
     return {
       text: textContent,
-      images: images.slice(0, 10), // Limit to first 10 images
+      images: images, // return all images (removed .slice(0, 10))
       videos,
       documents
     };
@@ -827,6 +828,46 @@ Thank you to everyone who supported this journey. Looking forward to the amazing
       return res.status(500).json({
         error: "Failed to extract LinkedIn post content"
       });
+    }
+  });
+
+  // Media proxy to stream LinkedIn CDN assets via your server
+  app.get("/api/proxy", async (req, res) => {
+    try {
+      const url = (req.query.url as string) || "";
+      if (!/^https?:\/\//i.test(url)) {
+        return res.status(400).json({ message: "Invalid or missing 'url' parameter" });
+      }
+
+      const userAgent = new UserAgent().toString();
+      const response = await axios.get(url, {
+        responseType: "stream",
+        timeout: 30000,
+        headers: {
+          "User-Agent": userAgent,
+          "Accept": "*/*",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": "https://www.linkedin.com/",
+          "Connection": "keep-alive",
+        },
+        maxRedirects: 5,
+        validateStatus: () => true,
+      });
+
+      if (response.status < 200 || response.status >= 300) {
+        return res.status(response.status).end();
+      }
+
+      const contentType = response.headers["content-type"] || "application/octet-stream";
+      const contentLength = response.headers["content-length"];
+      res.setHeader("Content-Type", contentType);
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+
+      response.data.pipe(res);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Media proxy error" });
     }
   });
 
