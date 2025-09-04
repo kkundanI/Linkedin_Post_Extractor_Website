@@ -2,7 +2,7 @@
 
 Extract text, all carousel images, videos, and documents from public LinkedIn posts. View the content in the UI and download everything as a ZIP.
 
-  ** [Linkedin Post Extractor ] (https://youtube.com/watch?v=4ixwoUR6fUc&feature=shared)
+  ** Linkedin Post Extractor : (https://youtube.com/watch?v=4ixwoUR6fUc&feature=shared)
 
 - Frontend: React + Vite (TypeScript)
 - Backend: Express (TypeScript)
